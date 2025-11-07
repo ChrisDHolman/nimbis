@@ -43,7 +43,6 @@ to provide comprehensive security analysis for your projects.
 Examples:
   nimbis scan .                    # Scan current directory
   nimbis scan /path/to/project     # Scan specific directory
-  nimbis scan --scanners trivy-vuln,grype  # Use specific scanners
   nimbis scan --severity CRITICAL  # Only show critical issues`,
 		Args: cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -82,13 +81,9 @@ Manual installation required for:
 	// Scan command flags
 	scanCmd.Flags().StringP("output", "o", "", "Output file for results")
 	scanCmd.Flags().StringP("format", "f", "table", "Output format: table, json, sarif, html")
-	scanCmd.Flags().StringP("scanners", "s", "", "Comma-separated list of scanners to use")
 	scanCmd.Flags().StringP("severity", "", "LOW", "Minimum severity level: LOW, MEDIUM, HIGH, CRITICAL")
 	scanCmd.Flags().StringP("fail-on", "", "CRITICAL", "Fail if issues at or above this severity are found")
 	scanCmd.Flags().BoolP("verbose", "v", false, "Enable verbose output")
-	scanCmd.Flags().BoolP("container", "", false, "Scan for container/Docker images")
-	scanCmd.Flags().StringP("ai-provider", "", "", "AI provider for explanations: openai, anthropic, ollama")
-	scanCmd.Flags().StringP("ai-model", "", "", "AI model to use")
 
 	rootCmd.AddCommand(scanCmd)
 	rootCmd.AddCommand(setupCmd)
@@ -143,17 +138,13 @@ func showWelcomeScreen() {
    3. Run your first scan:
       $ nimbis scan .
 
-   4. Scan with specific scanners:
-      $ nimbis scan --scanners trivy-vuln,grype .
-
-   5. Get detailed help:
+   4. Get detailed help:
       $ nimbis scan --help
 
 💡 Pro Tips:
 
    • Use '--severity CRITICAL' to focus on critical issues only
    • Output results with '-o report.json -f json' for CI/CD integration
-   • Enable AI explanations with '--ai-provider anthropic'
 
 `)
 
@@ -203,7 +194,6 @@ func checkScannerStatus() {
 	}
 	
 	available := 0
-	unavailable := 0
 	
 	fmt.Println("\n✓ Available Scanners:")
 	hasAvailable := false
@@ -223,7 +213,6 @@ func checkScannerStatus() {
 	for _, s := range scanners {
 		if !s.checker() {
 			fmt.Printf("  ✗ %-30s [%s]\n", s.name, s.scanType)
-			unavailable++
 			hasMissing = true
 		}
 	}
@@ -250,7 +239,11 @@ func runSetup() {
 	fmt.Println("└───────────────────────────────────────────────────────────────────────┘")
 	fmt.Println()
 	
-	installer := NewScannerInstaller()
+	installer, err := NewScannerInstaller()
+	if err != nil {
+		fmt.Printf("❌ Failed to initialize installer: %v\n", err)
+		return
+	}
 	
 	scanners := []struct {
 		name string
@@ -304,25 +297,27 @@ func runScan(cmd *cobra.Command, args []string) {
 
 	output, _ := cmd.Flags().GetString("output")
 	format, _ := cmd.Flags().GetString("format")
-	scanners, _ := cmd.Flags().GetString("scanners")
 	severity, _ := cmd.Flags().GetString("severity")
 	failOn, _ := cmd.Flags().GetString("fail-on")
 	verbose, _ := cmd.Flags().GetBool("verbose")
-	container, _ := cmd.Flags().GetBool("container")
-	aiProvider, _ := cmd.Flags().GetString("ai-provider")
-	aiModel, _ := cmd.Flags().GetString("ai-model")
+
+	// Create scan types - enable all
+	scanTypes := ScanTypes{
+		IaC:     true,
+		Secrets: true,
+		SAST:    true,
+		SCA:     true,
+		SBOM:    true,
+	}
 
 	config := &ScanConfig{
-		TargetPath:      targetPath,
-		OutputFile:      output,
-		OutputFormat:    format,
-		SelectedScanners: scanners,
-		MinSeverity:     severity,
-		FailOnSeverity:  failOn,
-		Verbose:         verbose,
-		ScanContainer:   container,
-		AIProvider:      aiProvider,
-		AIModel:         aiModel,
+		TargetPath:     targetPath,
+		OutputFile:     output,
+		OutputFormat:   format,
+		MinSeverity:    severity,
+		FailOnSeverity: failOn,
+		Verbose:        verbose,
+		ScanTypes:      scanTypes,
 	}
 
 	// Show scan banner
@@ -335,7 +330,8 @@ func runScan(cmd *cobra.Command, args []string) {
                     v` + version + `
         IaC • Secrets • SAST • SCA • SBOM`)
 	
-	if err := runSecurityScan(config); err != nil {
+	scanner := NewScanner(config)
+	if err := scanner.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "\nError: %v\n", err)
 		os.Exit(1)
 	}
@@ -362,8 +358,4 @@ func getScannerType(name string) string {
 	default:
 		return "Security"
 	}
-}
-
-func getScannerTypeByName(name string) string {
-	return getScannerType(name)
 }
