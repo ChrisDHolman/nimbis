@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // ScannerInstaller handles automatic installation of scanners
@@ -46,8 +48,6 @@ func (i *ScannerInstaller) InstallAll() error {
 		{"TruffleHog", i.installTruffleHog},
 		{"Grype", i.installGrype},
 		{"Syft", i.installSyft},
-		// Note: Checkov requires Python/pip, OpenGrep requires npm
-		// These are skipped in auto-install but user can install manually
 	}
 
 	installed := 0
@@ -92,7 +92,7 @@ func (i *ScannerInstaller) installTrivy() error {
 		return nil // Already installed
 	}
 
-	version := "0.67.2" // Updated to latest version
+	version := "0.67.2"
 	owner := "aquasecurity"
 	repo := "trivy"
 	tag := "v" + version
@@ -217,6 +217,52 @@ func (i *ScannerInstaller) installSyft() error {
 	}
 
 	return i.downloadAndExtract(url, binaryName, binaryPath)
+}
+
+// getGitHubAssetURL fetches the download URL for a GitHub release asset
+func (i *ScannerInstaller) getGitHubAssetURL(owner, repo, tag string, filters []string) (string, error) {
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/tags/%s", owner, repo, tag)
+	
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(apiURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch release info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
+	}
+
+	var release struct {
+		Assets []struct {
+			Name               string `json:"name"`
+			BrowserDownloadURL string `json:"browser_download_url"`
+		} `json:"assets"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return "", fmt.Errorf("failed to parse release data: %w", err)
+	}
+
+	// Find matching asset
+	for _, asset := range release.Assets {
+		matches := true
+		assetName := strings.ToLower(asset.Name)
+		
+		for _, filter := range filters {
+			if !strings.Contains(assetName, strings.ToLower(filter)) {
+				matches = false
+				break
+			}
+		}
+		
+		if matches {
+			return asset.BrowserDownloadURL, nil
+		}
+	}
+
+	return "", fmt.Errorf("no matching asset found for filters: %v", filters)
 }
 
 // downloadAndExtract downloads and extracts a binary
