@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"strings"
@@ -16,176 +15,118 @@ var (
 func main() {
 	var rootCmd = &cobra.Command{
 		Use:   "nimbis",
-		Short: "Nimbis - Multi-Scanner Security Analysis Tool",
+		Short: "Nimbis - Multi-Scanner Security Analysis",
 		Long: `
-███    ██ ██ ███    ███ ██████  ██ ███████ 
-████   ██ ██ ████  ████ ██   ██ ██ ██      
-██ ██  ██ ██ ██ ████ ██ ██████  ██ ███████ 
-██  ██ ██ ██ ██  ██  ██ ██   ██ ██      ██ 
-██   ████ ██ ██      ██ ██████  ██ ███████ 
-                v` + version + `
-    IaC • Secrets • SAST • SCA • SBOM
+    ███    ██ ██ ███    ███ ██████  ██ ███████ 
+    ████   ██ ██ ████  ████ ██   ██ ██ ██      
+    ██ ██  ██ ██ ██ ████ ██ ██████  ██ ███████ 
+    ██  ██ ██ ██ ██  ██  ██ ██   ██ ██      ██ 
+    ██   ████ ██ ██      ██ ██████  ██ ███████ 
+                    v` + version + `
 
-Nimbis orchestrates multiple open-source security scanners
-to provide comprehensive security analysis for your projects.
+    Multi-Scanner Security Analysis Framework
+    IaC • Secrets • SAST • SCA • SBOM
 `,
 		Run: func(cmd *cobra.Command, args []string) {
-			// Show welcome screen on first run or when no flags provided
-			showWelcomeScreen()
+			showBanner()
+			showQuickHelp()
 		},
 	}
 
 	var scanCmd = &cobra.Command{
 		Use:   "scan [path]",
-		Short: "Run security scans on a directory or file",
-		Long: `Run comprehensive security scans using multiple scanners.
-
-Examples:
-  nimbis scan .                    # Scan current directory
-  nimbis scan /path/to/project     # Scan specific directory
-  nimbis scan --severity CRITICAL  # Only show critical issues`,
-		Args: cobra.MaximumNArgs(1),
+		Short: "Execute security scan",
+		Long:  `Execute comprehensive security scan using configured scanners.`,
+		Args:  cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			runScan(cmd, args)
 		},
 	}
 
-	var setupCmd = &cobra.Command{
-		Use:   "setup",
-		Short: "Install and configure security scanners",
-		Long: `Install security scanners that Nimbis orchestrates.
-
-This will download and install:
-  • Trivy        - IaC, Secrets, Vulnerabilities
-  • TruffleHog   - Secret detection
-  • Grype        - Dependency vulnerabilities
-  • Syft         - Software Bill of Materials
-
-Manual installation required for:
-  • Checkov      - pip3 install checkov
-  • OpenGrep     - npm install -g @opengrep/cli`,
-		Run: func(cmd *cobra.Command, args []string) {
-			runSetup()
-		},
-	}
-
 	var statusCmd = &cobra.Command{
 		Use:   "status",
-		Short: "Check which scanners are installed and available",
-		Long:  `Display the status of all security scanners and their availability.`,
+		Short: "Display scanner status",
+		Long:  `Display installation status of all security scanners.`,
 		Run: func(cmd *cobra.Command, args []string) {
+			showBanner()
 			checkScannerStatus()
 		},
 	}
 
-	// Scan command flags
-	scanCmd.Flags().StringP("output", "o", "", "Output file for results")
-	scanCmd.Flags().StringP("format", "f", "table", "Output format: table, json, sarif, html")
-	scanCmd.Flags().StringP("severity", "", "LOW", "Minimum severity level: LOW, MEDIUM, HIGH, CRITICAL")
-	scanCmd.Flags().StringP("fail-on", "", "CRITICAL", "Fail if issues at or above this severity are found")
-	scanCmd.Flags().BoolP("verbose", "v", false, "Enable verbose output")
+	var setupCmd = &cobra.Command{
+		Use:   "setup",
+		Short: "Install security scanners",
+		Long:  `Download and install security scanning tools.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			showBanner()
+			runSetup()
+		},
+	}
+
+	// Scan flags
+	scanCmd.Flags().StringP("output", "o", "", "Output file path")
+	scanCmd.Flags().StringP("format", "f", "table", "Output format (table|json|sarif|html)")
+	scanCmd.Flags().StringP("severity", "s", "LOW", "Minimum severity (LOW|MEDIUM|HIGH|CRITICAL)")
+	scanCmd.Flags().String("fail-on", "CRITICAL", "Exit with error on severity")
+	scanCmd.Flags().BoolP("verbose", "v", false, "Verbose output")
+	scanCmd.Flags().BoolP("quiet", "q", false, "Minimal output")
 
 	rootCmd.AddCommand(scanCmd)
-	rootCmd.AddCommand(setupCmd)
 	rootCmd.AddCommand(statusCmd)
+	rootCmd.AddCommand(setupCmd)
 
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "[-] Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func showWelcomeScreen() {
-	fmt.Println(`
-╔══════════════════════════════════════════════════════════════════════════╗
-║                                                                          ║
-║                      Welcome to Nimbis v` + version + `                       ║
-║                  Multi-Scanner Security Analysis Tool                   ║
-║                                                                          ║
-╚══════════════════════════════════════════════════════════════════════════╝
+func showBanner() {
+	fmt.Println()
+	fmt.Printf("%s", BrightCyan)
+	fmt.Println("    ███    ██ ██ ███    ███ ██████  ██ ███████ ")
+	fmt.Println("    ████   ██ ██ ████  ████ ██   ██ ██ ██      ")
+	fmt.Println("    ██ ██  ██ ██ ██ ████ ██ ██████  ██ ███████ ")
+	fmt.Println("    ██  ██ ██ ██ ██  ██  ██ ██   ██ ██      ██ ")
+	fmt.Println("    ██   ████ ██ ██      ██ ██████  ██ ███████ ")
+	fmt.Printf("%s", Reset)
+	fmt.Printf("                    %sv%s%s\n", Dim, version, Reset)
+	fmt.Println()
+}
 
-🔍 What is Nimbis?
-
-   Nimbis orchestrates multiple open-source security scanners to provide
-   comprehensive security analysis for your code, infrastructure, and 
-   dependencies. Think of it as your security command center.
-
-🛡️  What Nimbis Scans For:
-
-   • Infrastructure as Code (IaC) misconfigurations
-   • Hardcoded secrets and API keys
-   • Dependency vulnerabilities (CVEs)
-   • Static code analysis (SAST)
-   • Software Bill of Materials (SBOM)
-
-🔧 Supported Scanners:
-
-   • Trivy        - IaC, Secrets, Vulnerabilities
-   • TruffleHog   - Secret detection
-   • Grype        - Dependency vulnerabilities  
-   • Syft         - SBOM generation
-   • Checkov      - IaC scanning (Python required)
-   • OpenGrep     - SAST analysis (Node.js required)
-
-📋 Quick Start Guide:
-
-   1. Check scanner status:
-      $ nimbis status
-
-   2. Install scanners automatically:
-      $ nimbis setup
-
-   3. Run your first scan:
-      $ nimbis scan .
-
-   4. Get detailed help:
-      $ nimbis scan --help
-
-💡 Pro Tips:
-
-   • Use '--severity CRITICAL' to focus on critical issues only
-   • Output results with '-o report.json -f json' for CI/CD integration
-
-`)
-
-	fmt.Print("Would you like to check scanner status now? [Y/n]: ")
+func showQuickHelp() {
+	fmt.Println("Multi-Scanner Security Analysis Framework")
+	fmt.Println()
+	fmt.Printf("%s=[ %sNimbis v%s%s                                            ]=%s\n", Dim, BrightWhite, version, Dim, Reset)
+	fmt.Printf("%s+ -- --=[ %s8 security scanners%s                              ]%s\n", Dim, BrightGreen, Dim, Reset)
+	fmt.Printf("%s+ -- --=[ %sIaC | Secrets | SAST | SCA | SBOM%s               ]%s\n", Dim, BrightCyan, Dim, Reset)
+	fmt.Println()
 	
-	reader := bufio.NewReader(os.Stdin)
-	response, _ := reader.ReadString('\n')
-	response = strings.ToLower(strings.TrimSpace(response))
-	
-	if response == "" || response == "y" || response == "yes" {
-		fmt.Println()
-		checkScannerStatus()
-		
-		// Ask if they want to run setup
-		fmt.Print("\nWould you like to install missing scanners? [Y/n]: ")
-		response, _ = reader.ReadString('\n')
-		response = strings.ToLower(strings.TrimSpace(response))
-		
-		if response == "" || response == "y" || response == "yes" {
-			fmt.Println()
-			runSetup()
-		}
-	} else {
-		fmt.Println("\n💡 Run 'nimbis status' anytime to check scanner availability")
-		fmt.Println("💡 Run 'nimbis setup' to install scanners")
-		fmt.Println("💡 Run 'nimbis scan --help' for scanning options\n")
+	commands := []struct {
+		name string
+		desc string
+	}{
+		{"nimbis scan [path]", "Execute security scan"},
+		{"nimbis status", "Show scanner status"},
+		{"nimbis setup", "Install scanners"},
+		{"nimbis scan --help", "Show scan options"},
 	}
+	
+	fmt.Printf("%sCommands%s\n", Bold, Reset)
+	fmt.Println(strings.Repeat("─", 50))
+	for _, cmd := range commands {
+		fmt.Printf("  %-25s %s%s%s\n", cmd.name, Dim, cmd.desc, Reset)
+	}
+	fmt.Println()
 }
 
 func checkScannerStatus() {
-	fmt.Println("┌─ SCANNER STATUS ─────────────────────────────────────────────────────┐")
-	
-	// Check all possible scanners
 	scanners := []struct {
 		name     string
 		scanType string
 		checker  func() bool
 	}{
-		{"Trivy IaC Scanner", "IaC", func() bool { return NewTrivyIaCScanner().IsAvailable() }},
-		{"Trivy Secret Scanner", "Secrets", func() bool { return NewTrivySecretScanner().IsAvailable() }},
-		{"Trivy Vulnerability Scanner", "SCA", func() bool { return NewTrivyVulnScanner().IsAvailable() }},
+		{"Trivy", "IaC/Secrets/SCA", func() bool { return NewTrivyIaCScanner().IsAvailable() }},
 		{"TruffleHog", "Secrets", func() bool { return NewTruffleHogScanner().IsAvailable() }},
 		{"Checkov", "IaC", func() bool { return NewCheckovScanner().IsAvailable() }},
 		{"OpenGrep", "SAST", func() bool { return NewOpenGrepScanner().IsAvailable() }},
@@ -194,54 +135,51 @@ func checkScannerStatus() {
 	}
 	
 	available := 0
+	missing := []string{}
 	
-	fmt.Println("\n✓ Available Scanners:")
-	hasAvailable := false
+	fmt.Printf("%sScanner Status%s\n", Bold, Reset)
+	fmt.Println(strings.Repeat("─", 60))
+	
 	for _, s := range scanners {
 		if s.checker() {
-			fmt.Printf("  ✓ %-30s [%s]\n", s.name, s.scanType)
+			fmt.Printf("  %s[+]%s %-20s %s%-20s%s %sOK%s\n", 
+				BrightGreen, Reset, s.name, Dim, s.scanType, Reset, BrightGreen, Reset)
 			available++
-			hasAvailable = true
+		} else {
+			fmt.Printf("  %s[-]%s %-20s %s%-20s%s %sNot Found%s\n", 
+				BrightRed, Reset, s.name, Dim, s.scanType, Reset, BrightRed, Reset)
+			missing = append(missing, s.name)
 		}
 	}
-	if !hasAvailable {
-		fmt.Println("  (none)")
+	
+	fmt.Println()
+	fmt.Printf("%s[*]%s %d/%d scanners available\n", BrightCyan, Reset, available, len(scanners))
+	
+	if len(missing) > 0 {
+		fmt.Printf("%s[!]%s Missing: %s\n", BrightYellow, Reset, strings.Join(missing, ", "))
+		fmt.Printf("%s[*]%s Run '%snimbis setup%s' to install\n", BrightCyan, Reset, BrightWhite, Reset)
 	}
 	
-	fmt.Println("\n✗ Missing Scanners:")
-	hasMissing := false
-	for _, s := range scanners {
-		if !s.checker() {
-			fmt.Printf("  ✗ %-30s [%s]\n", s.name, s.scanType)
-			hasMissing = true
-		}
-	}
-	if !hasMissing {
-		fmt.Println("  (none)")
-	}
-	
-	fmt.Println("└───────────────────────────────────────────────────────────────────────┘")
-	
-	if available == 0 {
-		fmt.Println("\n⚠️  No scanners are currently installed.")
-		fmt.Println("💡 Run 'nimbis setup' to automatically install scanners")
-	} else {
-		fmt.Printf("\n✅ Ready to scan with %d scanner(s)\n", available)
-	}
+	fmt.Println()
 }
 
 func runSetup() {
-	fmt.Println("┌─ SCANNER SETUP ──────────────────────────────────────────────────────┐")
-	fmt.Println("│                                                                       │")
-	fmt.Println("│  Installing security scanners...                                     │")
-	fmt.Println("│  This may take a few minutes on first run.                           │")
-	fmt.Println("│                                                                       │")
-	fmt.Println("└───────────────────────────────────────────────────────────────────────┘")
+	// Check if already installed
+	if NewTrivyIaCScanner().IsAvailable() && 
+	   NewTruffleHogScanner().IsAvailable() && 
+	   NewGrypeScanner().IsAvailable() && 
+	   NewSyftScanner().IsAvailable() {
+		fmt.Printf("%s[*]%s All scanners already installed\n", BrightGreen, Reset)
+		fmt.Println()
+		return
+	}
+	
+	fmt.Printf("%s[*]%s Initializing scanner installation...\n", BrightCyan, Reset)
 	fmt.Println()
 	
 	installer, err := NewScannerInstaller()
 	if err != nil {
-		fmt.Printf("❌ Failed to initialize installer: %v\n", err)
+		fmt.Printf("%s[-]%s Failed to initialize: %v\n", BrightRed, Reset, err)
 		return
 	}
 	
@@ -256,37 +194,40 @@ func runSetup() {
 	}
 	
 	installed := 0
-	failed := 0
 	
 	for _, s := range scanners {
-		fmt.Printf("   Installing %-15s ", s.name+"...")
+		fmt.Printf("%s[*]%s Installing %s... ", BrightCyan, Reset, s.name)
 		if err := s.fn(); err != nil {
-			fmt.Printf("⚠️  failed: %v\n", err)
-			failed++
+			fmt.Printf("%s✗ %v%s\n", BrightRed, err, Reset)
 		} else {
-			fmt.Println("✓")
+			fmt.Printf("%s✓%s\n", BrightGreen, Reset)
 			installed++
 		}
 	}
 	
 	fmt.Println()
 	
-	if installed > 0 {
-		fmt.Printf("✅ Successfully installed %d/%d scanners\n\n", installed, len(scanners))
+	if installed == len(scanners) {
+		fmt.Printf("%s[+]%s Installation complete (%d/%d)\n", BrightGreen, Reset, installed, len(scanners))
+	} else if installed > 0 {
+		fmt.Printf("%s[!]%s Partial installation (%d/%d)\n", BrightYellow, Reset, installed, len(scanners))
 	} else {
-		fmt.Println("❌ Installation failed for all scanners\n")
+		fmt.Printf("%s[-]%s Installation failed\n", BrightRed, Reset)
 	}
 	
-	// Show manual installation instructions
-	fmt.Println("💡 Additional scanners (manual installation):")
-	fmt.Println("   • Checkov:  pip3 install checkov")
-	fmt.Println("   • OpenGrep: npm install -g @opengrep/cli")
-	fmt.Println()
+	// Show manual installation note
+	if !NewCheckovScanner().IsAvailable() || !NewOpenGrepScanner().IsAvailable() {
+		fmt.Println()
+		fmt.Printf("%s[*]%s Additional scanners (manual):\n", BrightCyan, Reset)
+		if !NewCheckovScanner().IsAvailable() {
+			fmt.Printf("    %s•%s Checkov: %spip3 install checkov%s\n", Dim, Reset, BrightWhite, Reset)
+		}
+		if !NewOpenGrepScanner().IsAvailable() {
+			fmt.Printf("    %s•%s OpenGrep: %snpm install -g @opengrep/cli%s\n", Dim, Reset, BrightWhite, Reset)
+		}
+	}
 	
-	// Re-check status
-	fmt.Println("Verifying installation...")
 	fmt.Println()
-	checkScannerStatus()
 }
 
 func runScan(cmd *cobra.Command, args []string) {
@@ -300,8 +241,8 @@ func runScan(cmd *cobra.Command, args []string) {
 	severity, _ := cmd.Flags().GetString("severity")
 	failOn, _ := cmd.Flags().GetString("fail-on")
 	verbose, _ := cmd.Flags().GetBool("verbose")
+	quiet, _ := cmd.Flags().GetBool("quiet")
 
-	// Create scan types - enable all
 	scanTypes := ScanTypes{
 		IaC:     true,
 		Secrets: true,
@@ -317,22 +258,17 @@ func runScan(cmd *cobra.Command, args []string) {
 		MinSeverity:    severity,
 		FailOnSeverity: failOn,
 		Verbose:        verbose,
+		Quiet:          quiet,
 		ScanTypes:      scanTypes,
 	}
 
-	// Show scan banner
-	fmt.Println(`
-    ███    ██ ██ ███    ███ ██████  ██ ███████ 
-    ████   ██ ██ ████  ████ ██   ██ ██ ██      
-    ██ ██  ██ ██ ██ ████ ██ ██████  ██ ███████ 
-    ██  ██ ██ ██ ██  ██  ██ ██   ██ ██      ██ 
-    ██   ████ ██ ██      ██ ██████  ██ ███████ 
-                    v` + version + `
-        IaC • Secrets • SAST • SCA • SBOM`)
+	if !quiet {
+		showBanner()
+	}
 	
 	scanner := NewScanner(config)
 	if err := scanner.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "\nError: %v\n", err)
+		fmt.Fprintf(os.Stderr, "\n%s[-]%s %v\n", BrightRed, Reset, err)
 		os.Exit(1)
 	}
 }
