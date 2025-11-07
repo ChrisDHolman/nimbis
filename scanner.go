@@ -64,15 +64,6 @@ func NewScanner(config *ScanConfig) *Scanner {
 
 // Run executes all configured scanners
 func (s *Scanner) Run() error {
-	// Print banner (skip if quiet mode)
-	if !s.config.Quiet {
-		PrintBanner()
-	} else {
-		PrintCompactBanner()
-	}
-	
-	PrintScanStart(s.config.TargetPath)
-
 	// Check scanner availability
 	s.checkScannerAvailability()
 
@@ -96,20 +87,22 @@ func (s *Scanner) Run() error {
 // checkScannerAvailability checks which scanners are available
 func (s *Scanner) checkScannerAvailability() {
 	if !s.config.Quiet {
-		PrintSectionHeader("SCANNER DETECTION")
+		fmt.Printf("%s[*]%s Detecting scanners...\n", BrightCyan, Reset)
 	}
 	
 	availableScanners := []string{}
+	unavailableScanners := []string{}
 	
 	for name, scanner := range s.scanners {
 		if scanner.IsAvailable() {
 			availableScanners = append(availableScanners, name)
-			if s.config.Verbose && !s.config.Quiet {
-				PrintScanProgress(scanner.Name(), "completed", 0)
+			if s.config.Verbose {
+				fmt.Printf("  %s[+]%s %s\n", BrightGreen, Reset, scanner.Name())
 			}
 		} else {
-			if !s.config.Quiet {
-				PrintScanProgress(scanner.Name(), "skipped", 0)
+			unavailableScanners = append(unavailableScanners, scanner.Name())
+			if s.config.Verbose {
+				fmt.Printf("  %s[-]%s %s\n", Dim, Reset, scanner.Name())
 			}
 			delete(s.scanners, name)
 		}
@@ -118,99 +111,13 @@ func (s *Scanner) checkScannerAvailability() {
 	s.results.Metadata.Scanners = availableScanners
 	
 	if !s.config.Quiet {
-		PrintSectionFooter()
-		fmt.Printf("\n%s%d%s scanners ready\n", BrightGreen, len(availableScanners), Reset)
+		fmt.Printf("%s[*]%s %d scanners ready\n", BrightGreen, Reset, len(availableScanners))
+		fmt.Println()
 	}
 	
 	if len(availableScanners) == 0 {
-		// Offer to auto-install
-		PrintError("No scanners available")
-		
-		shouldInstall := s.config.AutoInstall
-		if !shouldInstall {
-			fmt.Println("\nWould you like to auto-install scanners? (y/n)")
-			fmt.Print("> ")
-			
-			var response string
-			fmt.Scanln(&response)
-			shouldInstall = strings.ToLower(strings.TrimSpace(response)) == "y"
-		}
-		
-		if shouldInstall {
-			installer, err := NewScannerInstaller()
-			if err != nil {
-				fmt.Printf("Failed to create installer: %v\n", err)
-				os.Exit(1)
-			}
-			
-			if err := installer.InstallAll(); err != nil {
-				fmt.Printf("Installation failed: %v\n", err)
-				os.Exit(1)
-			}
-			
-			installer.AddToPath()
-			
-			// Re-check availability after installation
-			fmt.Println("🔧 Re-checking scanner availability...")
-			s.scanners = make(map[string]ScannerInterface)
-			
-			if s.config.ScanTypes.IaC {
-				s.scanners["trivy-iac"] = NewTrivyIaCScanner()
-				s.scanners["checkov"] = NewCheckovScanner()
-			}
-			
-			if s.config.ScanTypes.Secrets {
-				s.scanners["trufflehog"] = NewTruffleHogScanner()
-				s.scanners["trivy-secret"] = NewTrivySecretScanner()
-			}
-			
-			if s.config.ScanTypes.SAST {
-				s.scanners["opengrep"] = NewOpenGrepScanner()
-			}
-			
-			if s.config.ScanTypes.SCA {
-				s.scanners["trivy-vuln"] = NewTrivyVulnScanner()
-				s.scanners["grype"] = NewGrypeScanner()
-			}
-			
-			if s.config.ScanTypes.SBOM {
-				s.scanners["syft"] = NewSyftScanner()
-			}
-			
-			availableScanners = []string{}
-			for name, scanner := range s.scanners {
-				if scanner.IsAvailable() {
-					availableScanners = append(availableScanners, name)
-					fmt.Printf("  ✓ %s\n", scanner.Name())
-				} else {
-					delete(s.scanners, name)
-				}
-			}
-			
-			if len(availableScanners) == 0 {
-				fmt.Println("\n❌ Installation completed but scanners still not available.")
-				fmt.Println("\n💡 Manual installation instructions:")
-				fmt.Println("  • Trivy: https://aquasecurity.github.io/trivy/latest/getting-started/installation/")
-				fmt.Println("  • TruffleHog: https://github.com/trufflesecurity/trufflehog")
-				fmt.Println("  • Checkov: pip3 install checkov")
-				fmt.Println("  • Grype: https://github.com/anchore/grype")
-				fmt.Println("  • Syft: https://github.com/anchore/syft")
-				fmt.Println("  • OpenGrep: npm install -g @opengrep/cli")
-				os.Exit(1)
-			}
-			
-			s.results.Metadata.Scanners = availableScanners
-			fmt.Printf("\n✅ Ready to scan with %d scanner(s)\n\n", len(availableScanners))
-			return
-		}
-		
-		fmt.Println("\nManual installation instructions:")
-		fmt.Println("  • Trivy: https://aquasecurity.github.io/trivy/latest/getting-started/installation/")
-		fmt.Println("  • TruffleHog: https://github.com/trufflesecurity/trufflehog")
-		fmt.Println("  • Checkov: pip3 install checkov")
-		fmt.Println("  • Grype: https://github.com/anchore/grype")
-		fmt.Println("  • Syft: https://github.com/anchore/syft")
-		fmt.Println("  • OpenGrep: npm install -g @opengrep/cli")
+		fmt.Printf("%s[-]%s No scanners available\n", BrightRed, Reset)
+		fmt.Printf("%s[*]%s Run '%snimbis setup%s' to install\n", BrightCyan, Reset, BrightWhite, Reset)
 		os.Exit(1)
 	}
 }
@@ -218,18 +125,18 @@ func (s *Scanner) checkScannerAvailability() {
 // runParallel runs all scanners in parallel
 func (s *Scanner) runParallel() {
 	if !s.config.Quiet {
-		PrintSectionHeader("SCANNING")
+		fmt.Printf("%s[*]%s Executing scans...\n", BrightCyan, Reset)
+		fmt.Println()
 	}
 	
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	
 	type scanResult struct {
-		scanner     ScannerInterface
-		findings    []Finding
-		totalCount  int
+		scanner       ScannerInterface
+		findings      []Finding
 		filteredCount int
-		err         error
+		err           error
 	}
 	
 	results := make(chan scanResult, len(s.scanners))
@@ -239,13 +146,8 @@ func (s *Scanner) runParallel() {
 		go func(n string, sc ScannerInterface) {
 			defer wg.Done()
 			
-			if !s.config.Quiet {
-				PrintScanProgress(sc.Name(), "running", 0)
-			}
-			
 			findings, err := sc.Scan(s.config)
 			
-			totalCount := len(findings)
 			filteredCount := 0
 			
 			// Filter findings by severity
@@ -264,7 +166,6 @@ func (s *Scanner) runParallel() {
 			results <- scanResult{
 				scanner:       sc,
 				findings:      findings,
-				totalCount:    totalCount,
 				filteredCount: filteredCount,
 				err:           err,
 			}
@@ -280,11 +181,8 @@ func (s *Scanner) runParallel() {
 	// Collect results
 	for result := range results {
 		if result.err != nil {
-			if !s.config.Quiet {
-				PrintScanProgress(result.scanner.Name(), "failed", 0)
-				if s.config.Verbose {
-					PrintWarning(fmt.Sprintf("%s: %v", result.scanner.Name(), result.err))
-				}
+			if s.config.Verbose {
+				fmt.Printf("  %s[-]%s %s: %v\n", BrightRed, Reset, result.scanner.Name(), result.err)
 			}
 			continue
 		}
@@ -293,36 +191,37 @@ func (s *Scanner) runParallel() {
 		s.appendFindings(result.findings)
 		mu.Unlock()
 		
-		if !s.config.Quiet {
-			PrintScanProgress(result.scanner.Name(), "completed", result.filteredCount)
+		if s.config.Verbose && result.filteredCount > 0 {
+			fmt.Printf("  %s[+]%s %s (%d findings)\n", BrightGreen, Reset, result.scanner.Name(), result.filteredCount)
 		}
 	}
 	
 	if !s.config.Quiet {
-		PrintSectionFooter()
+		fmt.Println()
 	}
 }
 
 // runSequential runs all scanners sequentially
 func (s *Scanner) runSequential() {
 	if !s.config.Quiet {
-		PrintSectionHeader("SCANNING")
+		fmt.Printf("%s[*]%s Executing scans...\n", BrightCyan, Reset)
+		fmt.Println()
 	}
 	
 	minLevel := s.getSeverityLevel(s.config.MinSeverity)
 	
 	for _, scanner := range s.scanners {
-		if !s.config.Quiet {
-			PrintScanProgress(scanner.Name(), "running", 0)
+		if s.config.Verbose {
+			fmt.Printf("  %s[*]%s %s... ", BrightCyan, Reset, scanner.Name())
 		}
 		
 		findings, err := scanner.Scan(s.config)
 		if err != nil {
-			if !s.config.Quiet {
-				PrintScanProgress(scanner.Name(), "failed", 0)
-				if s.config.Verbose {
-					PrintWarning(fmt.Sprintf("%s: %v", scanner.Name(), err))
-				}
+			if s.config.Verbose {
+				fmt.Printf("%s✗%s\n", BrightRed, Reset)
+			}
+			if s.config.Verbose {
+				fmt.Printf("      %s%v%s\n", Dim, err, Reset)
 			}
 			continue
 		}
@@ -337,13 +236,17 @@ func (s *Scanner) runSequential() {
 		
 		s.appendFindings(filteredFindings)
 		
-		if !s.config.Quiet {
-			PrintScanProgress(scanner.Name(), "completed", len(filteredFindings))
+		if s.config.Verbose {
+			if len(filteredFindings) > 0 {
+				fmt.Printf("%s✓%s %s(%d findings)%s\n", BrightGreen, Reset, Dim, len(filteredFindings), Reset)
+			} else {
+				fmt.Printf("%s✓%s\n", BrightGreen, Reset)
+			}
 		}
 	}
 	
 	if !s.config.Quiet {
-		PrintSectionFooter()
+		fmt.Println()
 	}
 }
 
@@ -430,7 +333,7 @@ func (s *Scanner) outputResults() error {
 		}
 		
 		if !s.config.Quiet {
-			fmt.Printf("\n📄 Full results saved to: %s\n", s.config.OutputFile)
+			fmt.Printf("%s[*]%s Results saved: %s%s%s\n", BrightCyan, Reset, BrightWhite, s.config.OutputFile, Reset)
 		}
 	}
 	
@@ -450,7 +353,6 @@ func (s *Scanner) outputResults() error {
 
 // printBriefFindings prints a brief overview of findings
 func (s *Scanner) printBriefFindings() {
-	// Use the already filtered results from calculateSummary
 	allFindings := append(s.results.IaCResults, s.results.SecretResults...)
 	allFindings = append(allFindings, s.results.SASTResults...)
 	allFindings = append(allFindings, s.results.SCAResults...)
@@ -459,12 +361,11 @@ func (s *Scanner) printBriefFindings() {
 		return
 	}
 	
-	PrintSectionHeader("FINDINGS OVERVIEW")
+	fmt.Printf("%sTop Findings%s\n", Bold, Reset)
+	fmt.Println(strings.Repeat("─", 60))
 	
-	// Get minimum severity level
 	minSeverityLevel := s.getSeverityLevel(s.config.MinSeverity)
 	
-	// Group by severity (only those that meet the threshold)
 	severityGroups := map[string][]Finding{
 		SeverityCritical: {},
 		SeverityHigh:     {},
@@ -473,7 +374,6 @@ func (s *Scanner) printBriefFindings() {
 	}
 	
 	for _, f := range allFindings {
-		// Normalize severity
 		normalizedSeverity := strings.ToUpper(f.Severity)
 		var targetSeverity string
 		
@@ -490,15 +390,15 @@ func (s *Scanner) printBriefFindings() {
 			targetSeverity = SeverityLow
 		}
 		
-		// Only include if it meets minimum severity
 		if s.getSeverityLevel(targetSeverity) >= minSeverityLevel {
 			severityGroups[targetSeverity] = append(severityGroups[targetSeverity], f)
 		}
 	}
 	
-	// Print each severity group (only those at or above threshold)
+	shown := 0
+	maxShow := 10
+	
 	for _, sev := range []string{SeverityCritical, SeverityHigh, SeverityMedium, SeverityLow} {
-		// Skip if below minimum severity
 		if s.getSeverityLevel(sev) < minSeverityLevel {
 			continue
 		}
@@ -508,62 +408,102 @@ func (s *Scanner) printBriefFindings() {
 			continue
 		}
 		
-		fmt.Printf("\n%s%s (%d issues)%s\n", Bold, ColorSeverity(sev), len(findings), Reset)
+		var color string
+		switch sev {
+		case SeverityCritical:
+			color = BrightRed
+		case SeverityHigh:
+			color = Red
+		case SeverityMedium:
+			color = Yellow
+		case SeverityLow:
+			color = Green
+		}
 		
-		for i, f := range findings {
-			// Limit to 5 per severity level for readability
-			if i >= 5 {
-				fmt.Printf("\n   %s... and %d more %s issues%s\n", Dim, len(findings)-5, sev, Reset)
-				break
+		for _, f := range findings {
+			if shown >= maxShow {
+				remaining := len(allFindings) - shown
+				if remaining > 0 {
+					fmt.Printf("\n  %s[*]%s ... and %d more findings\n", Dim, Reset, remaining)
+				}
+				goto done
 			}
 			
-			// Format finding based on type
 			location := ""
 			if f.File != "" {
-				location = truncateMiddle(f.File, 35)
+				location = truncateMiddle(f.File, 30)
 				if f.Line > 0 {
 					location += fmt.Sprintf(":%d", f.Line)
 				}
 			}
 			
-			PrintFinding(sev, truncateScanner(f.Title, 55), location, truncateScanner(f.Remediation, 55))
+			fmt.Printf("\n  %s[%s]%s %s\n", color, sev, Reset, truncateScanner(f.Title, 50))
+			if location != "" {
+				fmt.Printf("      %s└─%s %s%s%s\n", Dim, Reset, Dim, location, Reset)
+			}
+			
+			shown++
 		}
 	}
 	
-	PrintSectionFooter()
+done:
+	fmt.Println()
 	
 	if s.config.OutputFile != "" {
-		PrintInfo(fmt.Sprintf("Full details saved to: %s", s.config.OutputFile))
+		fmt.Printf("%s[*]%s Full report: %s%s%s\n", BrightCyan, Reset, BrightWhite, s.config.OutputFile, Reset)
 	} else {
-		PrintInfo("Run with -o results.json to save full details")
+		fmt.Printf("%s[*]%s Save full report: %snimbis scan -o results.json%s\n", 
+			BrightCyan, Reset, Dim, Reset)
 	}
+	
+	fmt.Println()
 }
 
 // printSummary prints a human-readable summary
 func (s *Scanner) printSummary() {
-	stats := map[string]interface{}{
-		"Total Findings":   s.results.Summary.TotalFindings,
-		"Scan Duration":    s.results.Summary.ScanDuration,
-		"Scanners Used":    len(s.results.Metadata.Scanners),
-	}
+	fmt.Printf("%sResults%s\n", Bold, Reset)
+	fmt.Println(strings.Repeat("─", 60))
 	
-	PrintSummaryBox("SCAN SUMMARY", stats)
+	fmt.Printf("  %s[*]%s Total findings:   %s%d%s\n", 
+		BrightCyan, Reset, BrightWhite, s.results.Summary.TotalFindings, Reset)
+	fmt.Printf("  %s[*]%s Scan duration:    %s%s%s\n", 
+		BrightCyan, Reset, BrightWhite, s.results.Summary.ScanDuration, Reset)
+	fmt.Printf("  %s[*]%s Scanners used:    %s%d%s\n", 
+		BrightCyan, Reset, BrightWhite, len(s.results.Metadata.Scanners), Reset)
 	
 	if len(s.results.Summary.FindingsBySeverity) > 0 {
-		fmt.Printf("\n%sSeverity Breakdown:%s\n", Bold, Reset)
+		fmt.Println()
+		fmt.Printf("%sSeverity Distribution%s\n", Bold, Reset)
+		fmt.Println(strings.Repeat("─", 60))
+		
 		for _, sev := range []string{SeverityCritical, SeverityHigh, SeverityMedium, SeverityLow} {
 			if count, ok := s.results.Summary.FindingsBySeverity[sev]; ok && count > 0 {
-				fmt.Printf("  %s %d\n", ColorSeverity(sev), count)
+				var color string
+				switch sev {
+				case SeverityCritical:
+					color = BrightRed
+				case SeverityHigh:
+					color = Red
+				case SeverityMedium:
+					color = Yellow
+				case SeverityLow:
+					color = Green
+				}
+				fmt.Printf("  %s%-10s%s %s%d%s\n", color, sev, Reset, BrightWhite, count, Reset)
 			}
 		}
 	}
 	
 	if len(s.results.Summary.FindingsByType) > 0 {
-		fmt.Printf("\n%sFindings by Type:%s\n", Bold, Reset)
+		fmt.Println()
+		fmt.Printf("%sFinding Types%s\n", Bold, Reset)
+		fmt.Println(strings.Repeat("─", 60))
 		for scanType, count := range s.results.Summary.FindingsByType {
-			fmt.Printf("  %s• %s:%s %d\n", Cyan, scanType, Reset, count)
+			fmt.Printf("  %s%-10s%s %s%d%s\n", Cyan, scanType, Reset, BrightWhite, count, Reset)
 		}
 	}
+	
+	fmt.Println()
 }
 
 // checkFailCondition checks if the scan should fail based on severity threshold
@@ -579,7 +519,7 @@ func (s *Scanner) checkFailCondition() error {
 	
 	for sev, count := range s.results.Summary.FindingsBySeverity {
 		if count > 0 && severityOrder[sev] >= failThreshold {
-			return fmt.Errorf("scan failed: found %d issue(s) at or above %s severity", count, s.config.FailOnSeverity)
+			return fmt.Errorf("found %d issue(s) at or above %s severity", count, s.config.FailOnSeverity)
 		}
 	}
 	
