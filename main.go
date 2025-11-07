@@ -186,32 +186,58 @@ func showWelcomeScreen() {
 func checkScannerStatus() {
 	fmt.Println("┌─ SCANNER STATUS ─────────────────────────────────────────────────────┐")
 	
-	config := &ScanConfig{TargetPath: "."}
-	available, unavailable := checkScannerAvailability(config)
-	
-	if len(available) > 0 {
-		fmt.Println("\n✓ Available Scanners:")
-		for _, scanner := range available {
-			scanType := getScannerType(scanner.Name())
-			fmt.Printf("  ✓ %-30s [%s]\n", scanner.Name(), scanType)
-		}
+	// Check all possible scanners
+	scanners := []struct {
+		name     string
+		scanType string
+		checker  func() bool
+	}{
+		{"Trivy IaC Scanner", "IaC", func() bool { return NewTrivyIaCScanner().IsAvailable() }},
+		{"Trivy Secret Scanner", "Secrets", func() bool { return NewTrivySecretScanner().IsAvailable() }},
+		{"Trivy Vulnerability Scanner", "SCA", func() bool { return NewTrivyVulnScanner().IsAvailable() }},
+		{"TruffleHog", "Secrets", func() bool { return NewTruffleHogScanner().IsAvailable() }},
+		{"Checkov", "IaC", func() bool { return NewCheckovScanner().IsAvailable() }},
+		{"OpenGrep", "SAST", func() bool { return NewOpenGrepScanner().IsAvailable() }},
+		{"Grype", "SCA", func() bool { return NewGrypeScanner().IsAvailable() }},
+		{"Syft", "SBOM", func() bool { return NewSyftScanner().IsAvailable() }},
 	}
 	
-	if len(unavailable) > 0 {
-		fmt.Println("\n✗ Missing Scanners:")
-		for _, name := range unavailable {
-			scanType := getScannerTypeByName(name)
-			fmt.Printf("  ✗ %-30s [%s]\n", name, scanType)
+	available := 0
+	unavailable := 0
+	
+	fmt.Println("\n✓ Available Scanners:")
+	hasAvailable := false
+	for _, s := range scanners {
+		if s.checker() {
+			fmt.Printf("  ✓ %-30s [%s]\n", s.name, s.scanType)
+			available++
+			hasAvailable = true
 		}
+	}
+	if !hasAvailable {
+		fmt.Println("  (none)")
+	}
+	
+	fmt.Println("\n✗ Missing Scanners:")
+	hasMissing := false
+	for _, s := range scanners {
+		if !s.checker() {
+			fmt.Printf("  ✗ %-30s [%s]\n", s.name, s.scanType)
+			unavailable++
+			hasMissing = true
+		}
+	}
+	if !hasMissing {
+		fmt.Println("  (none)")
 	}
 	
 	fmt.Println("└───────────────────────────────────────────────────────────────────────┘")
 	
-	if len(available) == 0 {
+	if available == 0 {
 		fmt.Println("\n⚠️  No scanners are currently installed.")
 		fmt.Println("💡 Run 'nimbis setup' to automatically install scanners")
 	} else {
-		fmt.Printf("\n✅ Ready to scan with %d scanner(s)\n", len(available))
+		fmt.Printf("\n✅ Ready to scan with %d scanner(s)\n", available)
 	}
 }
 
