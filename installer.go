@@ -92,24 +92,35 @@ func (i *ScannerInstaller) installTrivy() error {
 		return nil // Already installed
 	}
 
-	version := "0.55.2"
-	var url string
+	version := "0.67.2" // Updated to latest version
+	owner := "aquasecurity"
+	repo := "trivy"
+	tag := "v" + version
 
-	switch runtime.GOOS {
-	case "linux":
-		url = fmt.Sprintf("https://github.com/aquasecurity/trivy/releases/download/v%s/trivy_%s_Linux-%s.tar.gz",
-			version, version, runtime.GOARCH)
-	case "darwin":
-		url = fmt.Sprintf("https://github.com/aquasecurity/trivy/releases/download/v%s/trivy_%s_macOS-%s.tar.gz",
-			version, version, runtime.GOARCH)
-	case "windows":
-		url = fmt.Sprintf("https://github.com/aquasecurity/trivy/releases/download/v%s/trivy_%s_windows-%s.zip",
-			version, version, runtime.GOARCH)
-	default:
-		return fmt.Errorf("unsupported OS: %s", runtime.GOOS)
+	// Build correct filter based on OS
+	var filters []string
+	if runtime.GOOS == "windows" {
+		filters = []string{"windows", "64bit", ".zip"}
+	} else {
+		// For Linux/macOS, the format is: trivy_0.67.2_Linux-64bit.tar.gz
+		filters = []string{runtime.GOOS, ".tar.gz"}
+		
+		// Add architecture filter
+		if runtime.GOARCH == "amd64" {
+			filters = append(filters, "64bit")
+		} else if runtime.GOARCH == "arm64" {
+			filters = append(filters, "ARM64")
+		} else if runtime.GOARCH == "arm" {
+			filters = append(filters, "ARM64")
+		}
 	}
 
-	return i.downloadAndExtract(url, binaryName, binaryPath)
+	assetURL, err := i.getGitHubAssetURL(owner, repo, tag, filters)
+	if err != nil {
+		return err
+	}
+
+	return i.downloadAndExtract(assetURL, binaryName, binaryPath)
 }
 
 // installTruffleHog installs TruffleHog scanner
