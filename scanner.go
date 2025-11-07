@@ -62,24 +62,6 @@ func NewScanner(config *ScanConfig) *Scanner {
 	return s
 }
 
-// getScannerType returns the scan type for a scanner name
-func getScannerType(scannerName string) string {
-	switch {
-	case strings.Contains(scannerName, "iac") || strings.Contains(scannerName, "Checkov"):
-		return "IaC"
-	case strings.Contains(scannerName, "secret") || strings.Contains(scannerName, "TruffleHog"):
-		return "Secrets"
-	case strings.Contains(scannerName, "opengrep") || strings.Contains(scannerName, "OpenGrep"):
-		return "SAST"
-	case strings.Contains(scannerName, "vuln") || strings.Contains(scannerName, "Grype") || strings.Contains(scannerName, "Vulnerability"):
-		return "SCA"
-	case strings.Contains(scannerName, "Syft") || strings.Contains(scannerName, "SBOM"):
-		return "SBOM"
-	default:
-		return ""
-	}
-}
-
 // Run executes all configured scanners
 func (s *Scanner) Run() error {
 	// Print banner (skip if quiet mode)
@@ -312,21 +294,7 @@ func (s *Scanner) runParallel() {
 		mu.Unlock()
 		
 		if !s.config.Quiet {
-			// Show filtered count vs total if different
-			displayCount := result.filteredCount
-			statusMsg := ""
-			if result.filteredCount < result.totalCount {
-				statusMsg = fmt.Sprintf("%d of %d", result.filteredCount, result.totalCount)
-			}
-			
-			if statusMsg != "" && s.config.Verbose {
-				fmt.Printf("  \033[2K\r  %s✓%s %s [%s] %s(%s findings)%s\n", 
-					BrightGreen, Reset, result.scanner.Name(), 
-					getScannerTypeFromName(result.scanner.Name()),
-					Dim, statusMsg, Reset)
-			} else {
-				PrintScanProgress(result.scanner.Name(), "completed", displayCount)
-			}
+			PrintScanProgress(result.scanner.Name(), "completed", result.filteredCount)
 		}
 	}
 	
@@ -359,8 +327,6 @@ func (s *Scanner) runSequential() {
 			continue
 		}
 		
-		totalCount := len(findings)
-		
 		// Filter by severity
 		filteredFindings := []Finding{}
 		for _, f := range findings {
@@ -372,17 +338,7 @@ func (s *Scanner) runSequential() {
 		s.appendFindings(filteredFindings)
 		
 		if !s.config.Quiet {
-			displayCount := len(filteredFindings)
-			
-			// Show filtered count if different from total
-			if s.config.Verbose && len(filteredFindings) < totalCount {
-				fmt.Printf("  \033[2K\r  %s✓%s %s [%s] %s(%d of %d findings)%s\n",
-					BrightGreen, Reset, scanner.Name(),
-					getScannerTypeFromName(scanner.Name()),
-					Dim, len(filteredFindings), totalCount, Reset)
-			} else {
-				PrintScanProgress(scanner.Name(), "completed", displayCount)
-			}
+			PrintScanProgress(scanner.Name(), "completed", len(filteredFindings))
 		}
 	}
 	
@@ -562,54 +518,15 @@ func (s *Scanner) printBriefFindings() {
 			}
 			
 			// Format finding based on type
-			if f.Type == ScanTypeSCA {
-				// SCA findings - show package info
-				title := f.Title
-				if f.CVE != "" {
-					title = f.CVE
+			location := ""
+			if f.File != "" {
+				location = truncateMiddle(f.File, 35)
+				if f.Line > 0 {
+					location += fmt.Sprintf(":%d", f.Line)
 				}
-				
-				// Build location with package info
-				location := ""
-				remediation := ""
-				
-				if pkgName, ok := f.Extra["package"]; ok {
-					location = fmt.Sprintf("Package: %s", pkgName)
-					
-					if installedVer, ok := f.Extra["installed_version"]; ok {
-						location += fmt.Sprintf(" %s(%s)%s", Dim, installedVer, Reset)
-					}
-					
-					if fixedVer, ok := f.Extra["fixed_version"]; ok && fixedVer != "" {
-						remediation = fmt.Sprintf("Upgrade to %s", fixedVer)
-					}
-				}
-				
-				if f.File != "" {
-					if location != "" {
-						location += fmt.Sprintf(" in %s", truncateMiddle(f.File, 25))
-					} else {
-						location = truncateMiddle(f.File, 35)
-					}
-				}
-				
-				if remediation == "" && f.Remediation != "" {
-					remediation = truncateScanner(f.Remediation, 55)
-				}
-				
-				PrintFinding(sev, title, location, remediation)
-			} else {
-				// Non-SCA findings - original format
-				location := ""
-				if f.File != "" {
-					location = truncateMiddle(f.File, 35)
-					if f.Line > 0 {
-						location += fmt.Sprintf(":%d", f.Line)
-					}
-				}
-				
-				PrintFinding(sev, truncateScanner(f.Title, 55), location, truncateScanner(f.Remediation, 55))
 			}
+			
+			PrintFinding(sev, truncateScanner(f.Title, 55), location, truncateScanner(f.Remediation, 55))
 		}
 	}
 	
@@ -684,20 +601,4 @@ func truncateMiddle(s string, maxLen int) string {
 	// Keep start and end, replace middle with ...
 	keepLen := (maxLen - 3) / 2
 	return s[:keepLen] + "..." + s[len(s)-keepLen:]
-}
-
-// getSeverityEmoji returns an emoji for the severity level
-func getSeverityEmoji(severity string) string {
-	switch severity {
-	case SeverityCritical:
-		return "🔴"
-	case SeverityHigh:
-		return "🟠"
-	case SeverityMedium:
-		return "🟡"
-	case SeverityLow:
-		return "🟢"
-	default:
-		return "⚪"
-	}
 }
